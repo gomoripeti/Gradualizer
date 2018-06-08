@@ -22,6 +22,9 @@
 
 -compile([export_all]).
 
+-define(WARNING(_Fmt, _Args), ok).
+%%-define(WARNING(Fmt, Args), io:format("WARNING: "++Fmt, Args)).
+
 %% Data collected from epp parse tree
 -record(parsedata, {
 	  module             :: atom(),
@@ -799,8 +802,12 @@ type_check_expr(Env, {'try', _, Block, CaseCs, CatchCs, AfterCs}) ->
     % TODO: Check what variable bindings actually should be propagated
     {merge_types([Ty, TyC, TyS, TyA])
     ,VB
-    ,constraints:combine([Cs1,Cs2,Cs3,Cs4])}.
+    ,constraints:combine([Cs1,Cs2,Cs3,Cs4])};
 
+type_check_expr(_, _Expr) ->
+    ?WARNING("expr ~p not yet supported by type_check_expr~n~p~n",
+             [element(1, _Expr), _Expr]),
+    return({type, 0, any, []}).
 
 type_check_fields(Env, Rec, [{record_field, _, {atom, _, Field}, Expr} | Fields]) ->
     FieldTy = get_rec_field_type(Field, Rec),
@@ -1206,8 +1213,12 @@ do_type_check_expr_in(Env, ResTy, {'try', _, Block, CaseCs, CatchCs, AfterBlock}
     %% no variable bindings are propagated from a try expression
     %% as that would be "unsafe"
     {#{}
-    ,constraints:combine([Cs,Cs3,Cs5])}.
+    ,constraints:combine([Cs,Cs3,Cs5])};
 
+do_type_check_expr_in(_, _, _Expr) ->
+    ?WARNING("expr ~p not yet supported by type_check_expr_in~n~p~n",
+             [element(1, _Expr), _Expr]),
+    {#{}, constraints:empty()}.
 
 type_check_arith_op_in(Env, ResTy, Op, P, Arg1, Arg2) ->
     case ResTy of
