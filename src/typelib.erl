@@ -19,11 +19,11 @@ pp_type(Type) ->
     TypeDef = erl_pp:form(Form),
     {match, [S]} = re:run(TypeDef, <<"::\\s*(.*)\\.\\n*">>,
 			  [{capture, all_but_first, list}, dotall]),
-    S.
-    %case erl_anno:file(element(2, Type)) of
-    %	undefined -> S;
-    %	File      -> S ++ " in " ++ File
-    %end.
+    %%S.
+    case erl_anno:file(element(2, Type)) of
+        undefined -> S;
+        File      -> S ++ " in " ++ File
+    end.
 
 %% Looks up and prints the type M:N(P1, ..., Pn).
 debug_type(M, N, P) ->
