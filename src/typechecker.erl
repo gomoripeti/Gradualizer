@@ -1007,6 +1007,19 @@ do_type_check_expr_in(Env, Ty, Atom = {atom, LINE, _}) ->
 	false ->
 	    throw({type_error, Atom, LINE, Ty})
     end;
+
+%% The position of this clause matters.
+%% Clauses above can handle expected result type to be a type variable
+%% implicitely because they only use `subtype/3'. However clauses
+%% below use different `type_check_*_in' functions which don't necessarily
+%% handle type variables. So let's handle this in a common place.
+do_type_check_expr_in(Env, TyVar = {var, _, _}, Expr) ->
+    %% FIXME `type_check_expr' returns `any()' in many case where we could do
+    %% better (eg `{nil, LINE}').
+    {Ty, VB, Cs1} = type_check_expr(Env, Expr),
+    {true, Cs2} = subtype(Ty, TyVar, Env#env.tenv),
+    {VB, constraints:combine(Cs1, Cs2)};
+
 do_type_check_expr_in(Env, Ty, Cons = {cons, LINE, H, T}) ->
     case subtype({type, LINE, nonempty_list, [{type, LINE, any, []}]}, Ty, Env#env.tenv) of
 	{true, Cs1} ->
