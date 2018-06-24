@@ -1188,6 +1188,26 @@ type_check_arith_op_in(Env, ResTy, Op, P, Arg1, Arg2) ->
 	_ ->
 	  throw({type_error, arith_error, Op, P, ResTy})
     end.
+%%+    {ArgTy, Cs} =
+%%+        case {subtype(ResTy, {type, P, integer, []}, Env),
+%%+              subtype(ResTy, {type, P, float, []}, Env)} of
+%%+            {{true, Cs3}, false} ->
+%%+                %% TODO: integer ranges
+%%+                {{type, P, integer, []}, Cs3};
+%%+            {false, {true, Cs3}} ->
+%%+                %% TODO: at least one of the args must be float()
+%%+                {{type, P, number, []}, Cs3};
+%%+            {false, false} ->
+%%+                throw({type_error, arith_error, Op, P, ResTy});
+%%+            _ ->
+%%+                %% any()
+%%+                {{type, P, number, []}, constraints:empty()}
+%%+            end,
+%%+    {VarBinds1, Cs1} = type_check_expr_in(Env, ArgTy, Arg1),
+%%+    {VarBinds2, Cs2} = type_check_expr_in(Env, ArgTy, Arg2),
+%%+    {union_var_binds([VarBinds1, VarBinds2])
+%%+    ,constraints:combine([Cs, Cs1, Cs2])}.
+
 type_check_int_op_in(Env, ResTy, Op, P, Arg1, Arg2) ->
     case ResTy of
 	{type, _, Ty, []} when Ty == 'integer' orelse Ty == 'any' ->
