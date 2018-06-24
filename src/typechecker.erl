@@ -804,6 +804,12 @@ type_check_expr(Env, {'try', _, Block, CaseCs, CatchCs, AfterCs}) ->
     ,VB
     ,constraints:combine([Cs1,Cs2,Cs3,Cs4])};
 
+type_check_expr(_, {op, _, Op, _Arg1, _Arg2} = _Expr)
+  when Op == '++'; Op == '--' ->
+    %% FIXME
+    ?WARNING("list op ~p not yet supported by type_check_expr~n~p~n",
+             [Op, _Expr]),
+    return({type, 0, any, []});
 type_check_expr(_, _Expr) ->
     ?WARNING("expr ~p not yet supported by type_check_expr~n~p~n",
              [element(1, _Expr), _Expr]),
