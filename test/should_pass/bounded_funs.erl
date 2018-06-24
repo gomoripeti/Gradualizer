@@ -4,10 +4,20 @@
 
 -spec f() -> term().
 f() ->
+    g_list([1, 2]),
+    g_any({1, 2}),
     g(myatom).
 
 -spec g(Atom) -> any() when Atom :: atom().
 g(A) ->
+    A.
+
+-spec g_list(List) -> any() when List :: list().
+g_list(L) ->
+    L.
+
+-spec g_any(Any) -> any() when Any :: term().
+g_any(A) ->
     A.
 
 h() ->
