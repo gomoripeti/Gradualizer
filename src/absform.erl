@@ -3,7 +3,8 @@
 
 -export([normalize_record_field/1,
          normalize_function_type_list/1,
-         function_type_list_to_fun_types/1]).
+         function_type_list_to_fun_types/1,
+         normalize_ast/1]).
 
 %% @doc Turns all record fields into typed record fields. Adds default
 %% 'undefined' if default value is missing.
@@ -53,3 +54,35 @@ function_type_list_to_fun_types(FunTypeList) ->
           [{FunType, constraints:convert(FunConst)}
            || {type, _, bounded_fun, [FunType, FunConst]} <- FunTypeList]),
     {{type, L, union, FunTypes}, constraints:combine(Css)}.
+
+normalize_ast(Forms) when is_list(Forms) ->
+    lists:map(fun normalize_ast/1, Forms);
+normalize_ast(Form) ->
+    {MappedForm, _} = erl_syntax_lib:mapfold(fun normalize_ast/2, top, Form),
+    erl_syntax:revert(MappedForm).
+
+%% Record field definitions
+normalize_ast(RecordField, C) when element(1, RecordField) =:= record_field;
+                                         element(1, RecordField) =:= typed_record_field ->
+    {normalize_record_field(RecordField), C};
+
+%% Function type definitions
+normalize_ast(FunType = {type, _, 'fun', _}, C) ->
+    {normalize_function_type(FunType), C};
+
+%% Built-in type aliases
+normalize_ast(Type = {type, _, _, _}, C) ->
+    {typechecker:expand_builtin_aliases(Type), C};
+
+%% Unary ops
+normalize_ast({op, _, '-', {integer, Ann, I}}, C) ->
+    {{integer, Ann, -I}, C};
+normalize_ast({op, _, '+', {integer, Ann, I}}, C) ->
+    {{integer, Ann, I}, C};
+
+%% Character
+normalize_ast({char, Ann, I}, C) ->
+    {{integer, Ann, I}, C};
+
+normalize_ast(AST, C) ->
+    {AST, C}.

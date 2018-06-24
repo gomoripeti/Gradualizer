@@ -1844,7 +1844,7 @@ type_check_forms(Forms, Opts) ->
 	      ,opaques   = Opaques
 	      ,records   = Records
 	      } =
-	collect_specs_types_opaques_and_functions(Forms),
+	collect_specs_types_opaques_and_functions(absform:normalize_ast(Forms)),
     FEnv = create_fenv(Specs, Funs),
     TEnv = create_tenv(Types ++ Opaques, Records),
     lists:foldr(fun (Function, Res) when Res =:= ok;
