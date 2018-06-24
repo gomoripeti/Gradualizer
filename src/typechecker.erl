@@ -681,20 +681,11 @@ type_check_expr(Env, {call, _, Name, Args}) ->
 	    { {type, 0, any, []}
 	    , union_var_binds([VarBinds | VarBindsList])
 	    , constraints:combine([Cs | Css])};
-	[{type, _, bounded_fun, [{type, _, 'fun',
-				  [{type, _, product, ArgTys}, ResTy]}
-				,SCs2]}] ->
-	    % TODO: Handle multi-clause function types
-	    Cs2 = constraints:convert(SCs2),
-	    {VarBindsList, Css} =
-		lists:unzip(
-		  lists:zipwith(fun (ArgTy, Arg) ->
-				       type_check_expr_in(Env, ArgTy, Arg)
-			       end, ArgTys, Args)
-		 ),
-	    { ResTy
-	    , union_var_binds([VarBinds | VarBindsList])
-	    , constraints:combine([Cs, Cs2 | Css])}
+        [ClauseTy] ->
+            type_check_bounded_fun(Env, ClauseTy, Args, VarBinds, Cs);
+        [_, _|_] ->
+            %% Multi-clause function type
+            type_check_multi_clause_fun(Env, FunTy, Name, Args, VarBinds, Cs)
     end;
 type_check_expr(Env, {lc, _, Expr, Qualifiers}) ->
     type_check_lc(Env, Expr, Qualifiers);
@@ -1314,6 +1305,33 @@ type_check_fun(_Env, {remote, P, {atom,_,Module}, {atom,_,Fun}}, Arity) ->
     end;
 type_check_fun(Env, Expr, _Arity) ->
     type_check_expr(Env, Expr).
+
+type_check_multi_clause_fun(Env, [FunTy|FunTyClauses],
+                            Name, Args, VarBinds, Cs) ->
+    try
+        type_check_bounded_fun(Env, FunTy,
+                               Args, VarBinds, Cs)
+    catch _ ->
+            type_check_multi_clause_fun(Env, FunTyClauses,
+                                        Name, Args, VarBinds, Cs)
+    end.
+
+type_check_bounded_fun(Env, FunTy,
+                       Args, VarBinds, Cs) ->
+    {type, _, bounded_fun,
+     [{type, _, 'fun',
+       [{type, _, product, ArgTys}, ResTy]},
+      SCs2]} = FunTy,
+    Cs2 = constraints:convert(SCs2),
+    {VarBindsList, Css} =
+        lists:unzip(
+          lists:zipwith(fun (ArgTy, Arg) ->
+                                type_check_expr_in(Env, ArgTy, Arg)
+                        end, ArgTys, Args)
+         ),
+    {ResTy,
+     union_var_binds([VarBinds | VarBindsList]),
+     constraints:combine([Cs, Cs2 | Css])}.
 
 type_check_block(Env, [Expr]) ->
     type_check_expr(Env, Expr);
