@@ -959,7 +959,15 @@ type_check_lc(Env, Expr, [{generate, _, Pat, Gen} | Quals]) ->
 								Env#env.tenv,
 								Env#env.venv) },
 				   Expr, Quals),
-    {TyL, VB, constraints:combine(Cs1,Cs2)}.
+    {TyL, VB, constraints:combine(Cs1,Cs2)};
+type_check_lc(Env, Expr, [FilterExpr | Quals]) ->
+    %% TODO Filter must return boolean()
+    {_Ty, VB1, Cs1} = type_check_expr(Env, FilterExpr),
+    %% Variable binding from the filter are propagated to subsequent qualifiers
+    {TyL, VB2, Cs2} = type_check_lc(
+                       Env#env{ venv = union_var_binds([VB1, Env#env.venv]) },
+                       Expr, Quals),
+    {TyL, VB2, constraints:combine(Cs1,Cs2)}.
 
 type_check_expr_in(Env, ResTy, Expr) ->
     NormResTy = normalize(ResTy, Env#env.tenv),
