@@ -1534,7 +1534,8 @@ merge_types([]) ->
     {type, 0, any, []};
 merge_types([Ty]) ->
     Ty;
-merge_types(Tys) ->
+merge_types(Tys0) ->
+    Tys = [normalize(T, _TEnv = #tenv{}) || T <- Tys0],
     %%% TODO: We shouldn't be so eager to convert types to any().
     %%% If we find any() in the list, it should simply vanish, if favour of
     %%% the other types present in the list.
@@ -1568,7 +1569,16 @@ merge_types(Tys) ->
 		    end;
 		[{type, _, map, Assocs}, {type, _, map, Assocs}] ->
 		    % TODO: Figure out how to merge field assocs properly
-		    [{type, 0, map, []}]
+                [{type, 0, map, []}];
+            [{type, _, none, []}|Rest] ->
+                %% FIXME I'm not sure how this function should work
+                merge_types(Rest);
+            [Ty,{type, _, none, []}|Rest] ->
+                %% FIXME I'm not sure how this function should work
+                %% - there are a lot of types missing
+                %% example crash from self-checking:
+                %% {case_clause,[{type,0,tuple,[{type,0,any,[]},{type,0,any,[]},{type,0,any,[]}]},{type,1727,no_return,[]}]}
+                merge_types([Ty | Rest])
 	    end
     end.
 
