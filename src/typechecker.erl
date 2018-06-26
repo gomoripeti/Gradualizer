@@ -741,8 +741,8 @@ type_check_expr(Env, {record, _, Record, Fields}) ->
 %% Functions
 type_check_expr(Env, {'fun', _, {clauses, Clauses}}) ->
     infer_clauses(Env, Clauses);
-type_check_expr(Env, {'fun', _, {function, Name, Arity}}) ->
-    BoundedFunTypeList = maps:get({Name, Arity}, Env#env.fenv),
+type_check_expr(Env, {'fun', P, {function, Name, Arity}}) ->
+    BoundedFunTypeList = get_local_fun_type(Name, Arity, Env#env.fenv, P),
     {Ty, Cs} = absform:function_type_list_to_fun_types(BoundedFunTypeList),
     {Ty, #{}, Cs};
 type_check_expr(_Env, {'fun', P, {function, {atom, _, M}, {atom, _, F}, {integer, _, A}}}) ->
@@ -1271,18 +1271,8 @@ type_check_assocs(_Env, []) ->
 % TODO: Collect constraints
 type_check_fun(Env, {atom, P, Name}, Arity) ->
     % Local function call
-    case maps:find({Name, Arity}, Env#env.fenv) of
-	{ok, Types} ->
-	    {Types, #{}, constraints:empty()};
-	error ->
-	    case erl_internal:bif(Name, Arity) of
-		true ->
-		    {ok, Types} = gradualizer_db:get_spec(erlang, Name, Arity),
-		    {Types, #{}, constraints:empty()};
-		false ->
-		    throw({call_undef, P, Name, Arity})
-	    end
-    end;
+    Types = get_local_fun_type(Name, Arity, Env#env.fenv, P),
+    {Types, #{}, constraints:empty()};
 type_check_fun(_Env, {remote, P, {atom,_,Module}, {atom,_,Fun}}, Arity) ->
     % Module:function call
     case gradualizer_db:get_spec(Module, Fun, Arity) of
@@ -1704,6 +1694,21 @@ get_rec_field_type(FieldName, [_|RecFieldTypes]) ->
 get_rec_field_type(FieldName, []) ->
     throw({error, {record_field_not_found, FieldName}}).
 
+get_local_fun_type(Name, Arity, FEnv, P) ->
+    % Local function call
+    case maps:find({Name, Arity}, FEnv) of
+        {ok, Types} ->
+            Types;
+        error ->
+            case erl_internal:bif(Name, Arity) of
+                true ->
+                    {ok, Types} = gradualizer_db:get_spec(erlang, Name, Arity),
+                    Types;
+                false ->
+                    throw({call_undef, P, Name, Arity})
+            end
+    end.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Main entry point
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1761,7 +1766,8 @@ create_fenv(Specs, Funs) ->
 % in the list then it right-most occurrence will take precedence. In this
 % case it will mean that if there is a spec, then that will take precedence
 % over the default type any().
-    maps:from_list([ {{Name, NArgs}, {type, 0, any, []}}
+    maps:from_list([ {{Name, NArgs}, absform:normalize_function_type_list(
+                                       [gradualizer_db:make_function_type(NArgs)])}
 		     || {function,_, Name, NArgs, _Clauses} <- Funs
 		   ] ++
 		   [ {{Name, NArgs}, absform:normalize_function_type_list(Types)}

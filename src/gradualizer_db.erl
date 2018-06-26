@@ -13,6 +13,9 @@
          save/1, load/1,
          import_files/1, import_app/1, import_otp/0]).
 
+%% Utility
+-export([make_function_type/1]).
+
 %% Callbacks
 -behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
