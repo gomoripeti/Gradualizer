@@ -5,6 +5,14 @@
 	 substitute_type_vars/2,
          pp_type/1, debug_type/3, parse_type/1]).
 
+-export([get_list_elem_type/1,
+         get_list_tail_type/1,
+         is_list_type/1,
+         is_nonempty_list_type/1,
+         is_proper_list_type/1]).
+
+-include("typelib.hrl").
+
 -type type() :: erl_parse:abstract_type().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -133,3 +141,91 @@ substitute_type_vars(Other = {op, _, _Op, _Arg1, _Arg2}, _) ->
 substitute_type_vars(Other = {T, _, _}, _)
   when T == atom; T == integer; T == char ->
     Other.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Get properties of types
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Lists
+
+-spec get_list_elem_type(type()) -> type().
+get_list_elem_type(Ty) ->
+    case is_list_type(Ty) of
+        true ->
+            case Ty of
+                {type, _, _, []} ->
+                    ?any;
+                {type, _, _, [ElemTy|_]} ->
+                    ElemTy
+            end;
+        maybe ->
+            ?any;
+        false ->
+            ?none
+    end.
+
+-spec get_list_tail_type(type()) -> type().
+get_list_tail_type(Ty) ->
+    case is_list_type(Ty) of
+        true ->
+            case is_proper_list_type(Ty) of
+                true ->
+                    ?nil;
+                _ ->
+                    case Ty of
+                        {type, _, _, []} ->
+                            ?any;
+                        {type, _, _, [_, TailTy]} ->
+                            TailTy
+                    end
+            end;
+        maybe ->
+            ?any;
+        false ->
+            ?none
+    end.
+
+-spec is_list_type(type()) -> boolean() | maybe.
+is_list_type(Ty) ->
+    {IsList, _, _} = list_props(Ty),
+    IsList.
+
+-spec is_nonempty_list_type(type()) -> boolean() | maybe.
+is_nonempty_list_type(Ty) ->
+    {_, _, IsNonEmpty} = list_props(Ty),
+    IsNonEmpty.
+
+-spec is_proper_list_type(type()) -> boolean() | maybe.
+is_proper_list_type(Ty) ->
+    {_, IsProper, _} = list_props(Ty),
+    IsProper.
+
+%% {is_list, is_proper, is_nonempty}
+list_props({type, _, nil, []}) ->
+    {true, true, false};
+list_props({type, _, list, []}) ->
+    {true, true, maybe};
+list_props({type, _, list, [_ElemTy]}) ->
+    {true, true, maybe};
+list_props({type, _, nonempty_list, []}) ->
+    {true, true, true};
+list_props({type, _, nonempty_list, [_ElemTy]}) ->
+    {true, true, true};
+list_props({type, _, maybe_improper_list, []}) ->
+    {true, maybe, maybe};
+list_props({type, _, maybe_improper_list, [_ElemTy, _TailTy]}) ->
+    {true, maybe, maybe};
+list_props({type, _, nonempty_improper_list, []}) ->
+    {true, false, true};
+list_props({type, _, nonempty_improper_list, [_ElemTy, _TailTy]}) ->
+    {true, false, true};
+list_props({type, _, nonempty_maybe_improper_list, []}) ->
+    {true, maybe, true};
+list_props({type, _, nonempty_maybe_improper_list, [_ElemTy, _TailTy]}) ->
+    {true, maybe, true};
+list_props({type, _, any, []}) ->
+    {maybe, maybe, maybe};
+list_props({var, _, any, _}) ->
+    {maybe, maybe, maybe};
+list_props(_) ->
+    {false, false, false}.
