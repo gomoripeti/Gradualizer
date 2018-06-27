@@ -1619,6 +1619,17 @@ add_type_pat({var, _, A}, Ty, _TEnv, VEnv) ->
     VEnv#{ A => Ty };
 add_type_pat(Expr, {type, _, any, []}, _TEnv, VEnv) ->
     add_any_types_pat(Expr, VEnv);
+add_type_pat(Pat, {type, P, union, [Ty|Tys]} = UnionTy, TEnv, VEnv) ->
+    try
+        add_type_pat(Pat, Ty, TEnv, VEnv)
+    catch _ ->
+            try add_type_pat(Pat, {type, P, union, Tys}, TEnv, VEnv)
+            catch _ ->
+                    %% throw with original type
+                    P1 = element(2, Pat),
+                    throw({type_error, pattern, P1, Pat, UnionTy})
+            end
+    end;
 add_type_pat({integer, _, _}, _Ty, _TEnv, VEnv) ->
     VEnv;
 add_type_pat(Tuple = {tuple, P, Pats}, Ty, TEnv, VEnv) ->
