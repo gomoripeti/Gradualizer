@@ -953,9 +953,25 @@ type_check_lc(Env, Expr, []) ->
     % care what type we return. It's different for type_check_lc_in.
     {{type, 0, any, []}, #{}, Cs};
 type_check_lc(Env, Expr, [{generate, _, Pat, Gen} | Quals]) ->
+    %% The return type of the generator must be a (proper) list
+    %% The pattern should match the type of the list's element type
     {Ty,  _,  Cs1} = type_check_expr(Env, Gen),
+    ElemTy =
+        case {typelib:is_list_type(Ty),
+              typelib:is_proper_list_type(Ty),
+              typelib:get_list_elem_type(Ty)} of
+            {true, true, ElemTy0} ->
+                ElemTy0;
+            {maybe, maybe, Any} ->
+                %% Ty could be any() or a type variable
+                Any;
+            _ ->
+                %% if Ty is a list but (maybe) improper list or not list at all
+                %% the generator can crash
+                ?none
+        end,
     {TyL, VB, Cs2} = type_check_lc(Env#env{ venv = add_type_pat(Pat,
-								Ty,
+								ElemTy,
 								Env#env.tenv,
 								Env#env.venv) },
 				   Expr, Quals),
