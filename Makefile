@@ -25,6 +25,8 @@ PROJECT = gradualizer
 PLT_APPS = kernel stdlib compiler crypto
 DIALYZER_OPTS = -Werror_handling
 
+ESCRIPT_ZIP=zip
+
 include erlang.mk
 
 gradualize: app

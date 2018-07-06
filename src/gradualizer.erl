@@ -16,7 +16,17 @@
          type_check_dir/2
         ]).
 
+%% escript entry point
+-export([main/1]).
+
 -type options() :: proplists:proplist().
+
+main(["-pa", Dirs|Opts]) ->
+    code:add_patha(Dirs),
+    main(Opts);
+main(["--dir", Dir]) ->
+    io:format("~p~n", [type_check_dir(Dir)]),
+    ok.
 
 %% API functions
 
