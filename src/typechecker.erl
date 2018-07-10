@@ -55,6 +55,60 @@
 	     %,tyvenv = #{}
 	     }).
 
+-record(type, {anno = erl_anno:new(0),
+               name,
+               params}).
+
+-define(t(Name, Params), #type{name = Name, params = Params}).
+-define(t(Name), ?t(Name, [])).
+
+-define(t_atom, ?t(atom)).
+-define(t_integer, ?t(integer)).
+-define(t_float, ?t(float)).
+
+-define(t_pid, ?t(pid)).
+-define(t_port, ?t(port)).
+-define(t_reference, ?t(reference)).
+
+-define(t_binary, ?t(binary)). %% ~= ?t(binary, [?lit_integer(8), ?lit_integer(0)]).
+-define(t_binary(M, N), ?t(binary, [?lit_integer(M), ?lit_integer(N)])).
+
+%% container types
+-define(t_tuple, ?t(tuple, any)).
+-define(t_tuple(L), ?t(tuple, L)).
+-define(t_list, ?t(list)). %% ~= ?t(list, [?t_any]) ~= ?t(maybe_improper_list, [?t_any, ?t_nil]).
+-define(t_list(L, T), ?t(maybe_improper_list, [L, T])).
+-define(t_map, ?t(map, any)).
+-define(t_map(Assoc), ?t(map, Assoc)).
+
+%% arrow type
+-define(t_fun, ?t(fun)). %% ~= ?t(fun, [{type, Anno, any}, ?t_any]).
+
+%%
+-define(t_product(L), ?t(product, L)).
+-define(t_union(L), ?t(union, L)).
+-define(t_intersection(L), ?t(intersection, L)). %% gradualizer-specific - not part of type()
+-define(t_not(T), ?t(not, T)). %% gradualizer-specific - not part of type()
+
+%% singleton types
+-define(t_nil, ?t(nil)).
+-record(atom, {anno = erl_anno:new(0), value}).
+-record(integer, {anno = erl_anno:new(0), value}).
+-define(lit_atom(A), #atom{value = A}).
+-define(lit_integer(I), #integer{value = I}).
+
+%% finite types
+-define(t_range(L, U), ?t(range, [lit_integer(L), ?lit_integer(U)])).
+
+%% top, bottom, unknown type
+-define(t_term, ?t(term)).
+-define(t_none, ?t(none)).
+-define(t_any, ?t(any)).
+
+-define(anno(T, Anno), T#type{anno = Anno}).
+anno(Type, Anno) ->
+    setelement(2, Type, Anno).
+
 %% Two types are compatible if one is a subtype of the other, or both.
 compatible(Ty1, Ty2, TEnv) ->
     case {subtype(Ty1, Ty2, TEnv), subtype(Ty2, Ty1, TEnv)} of
@@ -627,7 +681,7 @@ type_check_expr(Env, {'case', _, Expr, Clauses}) ->
     {Ty, VB, Cs2} = infer_clauses(Env#env{ venv = VEnv}, Clauses),
     {Ty, VB, constraints:combine(Cs1, Cs2)};
 type_check_expr(_Env, {integer, _, _N}) ->
-    return({type, 0, any, []});
+    return(?t_any);
 type_check_expr(Env, {tuple, _, TS}) ->
     { Tys, VarBindsList, Css} = lists:unzip3([ type_check_expr(Env, Expr)
 				        || Expr <- TS ]),
@@ -637,10 +691,10 @@ type_check_expr(Env, {cons, _, Head, Tail}) ->
     {Ty2, VB2, Cs2} = type_check_expr(Env, Tail),
     % TODO: Should we check the types here?
     case {Ty1, Ty2} of
-	{{type, _, any, []}, _} ->
-	    {{type, 0, any, []}, VB2, constraints:empty()};
-	{_, {type, _, any, []}} ->
-	    {{type, 0, any, []}, VB2, constraints:empty()};
+	{?t_any, _} ->
+	    {?t_any, VB2, constraints:empty()};
+	{_, ?t_any} ->
+	    {?t_any, VB2, constraints:empty()};
 	{Ty1, TyList = {type, _, list, [Ty]}} ->
 	    case subtype(Ty1, Ty, Env#env.tenv) of
 		{true, Cs} ->
@@ -672,16 +726,16 @@ type_check_expr(Env, {bin, _, BinElements}) ->
 		  end,
 		  BinElements),
     {VarBinds, Css} = lists:unzip(VarBindAndCsList),
-    {{type, 0, any, []},
+    {?t_any,
      union_var_binds(VarBinds),
      constraints:combine(Css)};
 type_check_expr(Env, {call, _, Name, Args}) ->
     {FunTy, VarBinds, Cs} = type_check_fun(Env, Name, length(Args)),
     case FunTy of
-	{type, _, any, []} ->
+	?t_any ->
 	    { _ArgTys, VarBindsList, Css} =
 		lists:unzip3([ type_check_expr(Env, Arg) || Arg <- Args]),
-	    { {type, 0, any, []}
+	    { ?t_any
 	    , union_var_binds([VarBinds | VarBindsList])
 	    , constraints:combine([Cs | Css])};
         [ClauseTy] ->
@@ -698,11 +752,11 @@ type_check_expr(Env, {block, _, Block}) ->
 % Don't return the type of anything other than something
 % which ultimately comes from a function type spec.
 type_check_expr(_Env, {string, _, _}) ->
-    return({type, 0, any, []});
-type_check_expr(_Env, {nil, _}) ->
-    return({type, 0, any, []});
+    return(?t_any);
+type_check_expr(_Env, ?t_nil) ->
+    return(?t_any);
 type_check_expr(_Env, {atom, _, _Atom}) ->
-    return({type, 0, any, []});
+    return(?t_any);
 
 %% Maps
 type_check_expr(Env, {map, _, Assocs}) ->
@@ -756,14 +810,14 @@ type_check_expr(Env, {op, _, '!', Proc, Val}) ->
     % Message passing is always untyped, which is why we discard the types
     {_, VB1, Cs1} = type_check_expr(Env, Proc),
     {_, VB2, Cs2} = type_check_expr(Env, Val),
-    {{type, 0, any, []}
+    {?t_any
     ,union_var_binds([VB1, VB2])
     ,constraints:combine(Cs1, Cs2)};
 type_check_expr(Env, {op, P, 'not', Arg}) ->
     {Ty, VB, Cs1} = type_check_expr(Env, Arg),
     case subtype({type, P, boolean, []}, Ty, Env#env.tenv) of
 	{true, Cs2} ->
-	    {{type, 0, any, []}, VB, constraints:combine(Cs1, Cs2)};
+	    {?t_any, VB, constraints:combine(Cs1, Cs2)};
 	false ->
 	    throw({type_error, non_boolean_argument_to_not, P, Ty})
     end;
@@ -875,10 +929,10 @@ type_check_rel_op(Env, Op, P, Arg1, Arg2) ->
 		{{true, Cs3}, {true, Cs4}} ->
 		    RetType =
 			case {Ty1, Ty2} of
-			    {{type, _, any, []},_} ->
-				{type, 0, any, []};
-			    {_,{type, _, any, []}} ->
-				{type, 0, any, []};
+			    {?t_any,_} ->
+				?t_any;
+			    {_,?t_any} ->
+				?t_any;
 			    {_,_} ->
 				% Return boolean() when both argument types
 				% are known, i.e. not any().
@@ -920,16 +974,16 @@ type_check_int_op(Env, Op, P, Arg1, Arg2) ->
 	    ,constraints:combine(Cs1, Cs2)}
     end.
 
-compat_arith_type(Any = {type, _, any, []}, {type, _, any, []}) ->
+compat_arith_type(Any = ?t_any, ?t_any) ->
     Any;
-compat_arith_type(Any = {type, _, any, []}, Ty) ->
+compat_arith_type(Any = ?t_any, Ty) ->
     case subtype(Ty, {type, erl_anno:new(0), number, []}, #tenv{}) of
 	false ->
 	    false;
 	_ ->
 	    Any
     end;
-compat_arith_type(Ty, Any = {type, _, any, []}) ->
+compat_arith_type(Ty, Any = ?t_any) ->
     case subtype(Ty, {type, erl_anno:new(0), number, []}, #tenv{}) of
 	false ->
 	    false;
@@ -964,7 +1018,7 @@ type_check_lc(Env, Expr, []) ->
     {_Ty, _VB, Cs} = type_check_expr(Env, Expr),
     % We're returning any() here because we're in a context that doesn't
     % care what type we return. It's different for type_check_lc_in.
-    {{type, 0, any, []}, #{}, Cs};
+    {?t_any, #{}, Cs};
 type_check_lc(Env, Expr, [{generate, _, Pat, Gen} | Quals]) ->
     %% The return type of the generator must be a (proper) list
     %% The pattern should match the type of the list's element type
@@ -1003,7 +1057,7 @@ type_check_expr_in(Env, ResTy, Expr) ->
     ?throw_orig_type(do_type_check_expr_in(Env, NormResTy, Expr),
                      ResTy, NormResTy).
 
-do_type_check_expr_in(Env, {type, _, any, []}, Expr) ->
+do_type_check_expr_in(Env, ?t_any, Expr) ->
     {_Ty, VB, Cs} = type_check_expr(Env, Expr),
     {VB, Cs};
 do_type_check_expr_in(Env, Ty, {var, LINE, Var}) ->
@@ -1049,7 +1103,7 @@ do_type_check_expr_in(Env, TyVar = {var, _, _}, Expr) ->
     {VB, constraints:combine(Cs1, Cs2)};
 
 do_type_check_expr_in(Env, Ty, Cons = {cons, LINE, H, T}) ->
-    case subtype({type, LINE, nonempty_list, [{type, LINE, any, []}]}, Ty, Env#env.tenv) of
+    case subtype(?t(nonempty_list, [?t_any]), Ty, Env#env.tenv) of
 	{true, Cs1} ->
 	    {VB, Cs2} = type_check_cons_in(Env, Ty, H, T),
 	    {VB, constraints:combine(Cs1, Cs2)};
@@ -1057,7 +1111,7 @@ do_type_check_expr_in(Env, Ty, Cons = {cons, LINE, H, T}) ->
 	    throw({type_error, cons, LINE, Cons, Ty})
     end;
 do_type_check_expr_in(Env, Ty, {nil, LINE}) ->
-    case subtype({type, LINE, nil, []}, Ty, Env#env.tenv) of
+    case subtype(?t_nil, Ty, Env#env.tenv) of
 	{true, Cs} ->
 	    {#{}, Cs};
 	false ->
@@ -1078,7 +1132,7 @@ do_type_check_expr_in(Env, Ty, {bin, LINE, _BinElements} = Bin) ->
     {_Ty, VarBinds, Cs2} = type_check_expr(Env, Bin),
     {VarBinds, constraints:combine(Cs1, Cs2)};
 do_type_check_expr_in(Env, ResTy, {tuple, LINE, TS}) ->
-    case subtype({type, LINE, tuple, lists:duplicate(length(TS), {type, LINE, any, []})}
+    case subtype(?t_tuple(lists:duplicate(length(TS), ?t_any))
 		,ResTy, Env#env.tenv) of
 	false ->
 	    throw({type_error, tuple, LINE, ResTy});
@@ -1124,7 +1178,7 @@ do_type_check_expr_in(Env, ResTy, {'if', _, Clauses}) ->
 do_type_check_expr_in(Env, ResTy, {call, P, Name, Args}) ->
     {FunTy, VarBinds, Cs} = type_check_fun(Env, Name, length(Args)),
     case FunTy of
-	{type, _, any, []} ->
+	?t_any ->
 	    {_, VarBindsList, Css} =
 		lists:unzip3([ type_check_expr(Env, Arg) || Arg <- Args]),
 	    { union_var_binds([VarBinds |  VarBindsList])
@@ -1149,7 +1203,7 @@ do_type_check_expr_in(Env, ResTy, {call, P, Name, Args}) ->
 	    end
     end;
 do_type_check_expr_in(Env, ResTy, {'receive', _, Clauses}) ->
-    check_clauses(Env, [{type, 0, any, []}], ResTy, Clauses);
+    check_clauses(Env, [?t_any], ResTy, Clauses);
 do_type_check_expr_in(Env, ResTy, {op, _, '!', Arg1, Arg2}) ->
     % The first argument should be a pid.
     {_,  VarBinds1, Cs1} = type_check_expr(Env, Arg1),
@@ -1206,7 +1260,7 @@ do_type_check_expr_in(Env, ResTy, {'try', _, Block, CaseCs, CatchCs, AfterBlock}
                 {_VB2, Cs2} = check_clauses(Env, [BlockTy], ResTy, CaseCs),
                 constraints:combine(Cs1, Cs2)
         end,
-    {_VB3, Cs3} = check_clauses(Env, [{type, 0, tuple, any}], ResTy, CatchCs),
+    {_VB3, Cs3} = check_clauses(Env, [?t_any], ResTy, CatchCs),
     Cs5 =
         case AfterBlock of
             [] ->
@@ -1333,7 +1387,7 @@ type_check_list_op_in(Env, ResTy, Op, P, Arg1, Arg2) ->
 	  {VarBinds2, Cs2} = type_check_expr_in(Env, ResTy, Arg2),
 	  {union_var_binds([VarBinds1, VarBinds2])
 	  ,constraints:combine(Cs1, Cs2)};
-	{type, _, any, []} ->
+	?t_any ->
 	  {VarBinds1, Cs1} = type_check_expr_in(Env, ResTy, Arg1),
 	  {VarBinds2, Cs2} = type_check_expr_in(Env, ResTy, Arg2),
 	  {union_var_binds([VarBinds1, VarBinds2])
@@ -1565,7 +1619,7 @@ type_check_function(FEnv, TEnv, {function,_, Name, NArgs, Clauses}) ->
 	    {VarBinds, Cs} = check_clauses(#env{ fenv = FEnv, tenv = TEnv },
 					   ArgsTy, ResTy, Clauses),
 	    {ResTy, VarBinds, constraints:combine(Cs,Cs2)};
-	{ok, {type, _, any, []}} ->
+	{ok, ?t_any} ->
 	    infer_clauses(#env{ fenv = FEnv, tenv = TEnv }, Clauses);
 	error ->
 	    throw({internal_error, missing_type_spec, Name, NArgs})
@@ -1577,7 +1631,7 @@ merge_types([Ty], _) ->
     Ty;
 merge_types(Tys0, Env) ->
     Tys = [normalize(T, Env#env.tenv) || T <- Tys0],
-    normalize({type, erl_anno:new(0), union, Tys}, Env#env.tenv).
+    normalize(?t_union(Tys), Env#env.tenv).
 
 add_types_pats([], [], _TEnv, VEnv) ->
     VEnv;
@@ -1622,7 +1676,7 @@ add_type_pat(Atom = {atom, P, _}, Ty, TEnv, VEnv) ->
 	    throw({type_error, pattern, P, Atom, Ty})
     end;
 add_type_pat(Nil = {nil, P}, Ty, TEnv, VEnv) ->
-    case subtype({type, P, nil, []}, Ty, TEnv) of
+    case subtype(?t_nil, Ty, TEnv) of
 	% There cannot be any constraints generated in this case
 	{true, _Cs} ->
 	    VEnv;
@@ -1649,7 +1703,7 @@ add_type_pat({bin, _, BinElements}, {type, _, binary, [_,_]}, TEnv, VEnv) ->
 add_type_pat({record, _, _Record, Fields}, {type, _, record, [{atom, _, _RecordName}]}, TEnv, VEnv) ->
     % TODO: We need the definitions of records here, to be able to add the
     % types of the matches in the record.
-    add_type_pat_fields(Fields, {type, 0, any, []}, TEnv, VEnv);
+    add_type_pat_fields(Fields, ?t_any, TEnv, VEnv);
 add_type_pat({match, _, Pat1, Pat2}, Ty, TEnv, VEnv) ->
     add_type_pat(Pat1, Ty, TEnv, add_type_pat(Pat2, Ty, TEnv, VEnv));
 
@@ -1669,20 +1723,20 @@ add_type_pat_list([Pat|Pats], [Ty|Tys], TEnv, VEnv) ->
 add_type_pat_list([], [], _TEnv, VEnv) ->
     VEnv.
 
-add_type_pat_tuple(Pats, {type, _, any, []}, _TEnv, VEnv) ->
+add_type_pat_tuple(Pats, ?t_any, _TEnv, VEnv) ->
     add_any_types_pats(Pats, VEnv);
-add_type_pat_tuple(Pats, {type, _, tuple, any}, _TEnv, VEnv) ->
+add_type_pat_tuple(Pats, ?t_tuple, _TEnv, VEnv) ->
     add_any_types_pats(Pats, VEnv);
-add_type_pat_tuple(Pats, {type, _, tuple, Tys}, TEnv, VEnv) ->
+add_type_pat_tuple(Pats, ?t_tuple(Tys), TEnv, VEnv) ->
     add_types_pats(Pats, Tys, TEnv, VEnv);
-add_type_pat_tuple(Pats, {type, _, union, Tys}, TEnv, VEnv) ->
+add_type_pat_tuple(Pats, ?t_union(Tys), TEnv, VEnv) ->
 %% TODO: This code approximates unions of tuples with tuples of unions
     Unions =
 	lists:map(fun (UnionTys) ->
-			  {type, 0, union, UnionTys}
+			  ?t_union(UnionTys)
 		  end
 		 ,transpose([TS
-			   || {type, _, tuple, TS} <- Tys
+			   || ?t_tuple(TS) <- Tys
 			    , length(TS) == length(Pats)])),
     lists:foldl(fun ({Pat, Union}, Env) ->
 			add_type_pat(Pat, Union, TEnv, Env)
@@ -1727,7 +1781,7 @@ add_any_types_pat({map, _, Fields}, VEnv) ->
 add_any_types_pat({var, _,'_'}, VEnv) ->
     VEnv;
 add_any_types_pat({var, _,A}, VEnv) ->
-    VEnv#{ A => {type, 0, any, []} }.
+    VEnv#{ A => ?t_any }.
 
 %% Get type from specifiers in a bit syntax, e.g. <<Foo/float-little>>
 -spec bit_specifier_list_to_type([atom()] | default) -> type().
@@ -1737,21 +1791,19 @@ bit_specifier_list_to_type(Specifiers) ->
     TypeSpecifiers =
 	lists:filtermap(fun
 			    (S) when S == integer; S == utf8; S == utf16 ->
-				{true, {type, 0, integer, []}};
+				{true, ?t_integer};
 			    (float) ->
-				{true, {type, 0, float, []}};
+				{true, ?t_float};
 			    (S) when S == binary; S == bytes ->
-				{true, {type, 0, binary, [{integer, 0, 0},
-							  {integer, 0, 8}]}};
+				{true, ?t_binary(0, 8)};
 			    (S) when S == bitstring; S == bits ->
-				{true, {type, 0, binary, [{integer, 0, 0},
-							  {integer, 0, 1}]}};
+				{true, ?t_binary(0, 1)};
 			    (_NotATypeSpecifier) ->
 				false
 			end,
 			Specifiers),
     case TypeSpecifiers of
-	[]  -> {type, erl_anno:new(0), integer, []}; %% default
+	[]  -> ?t_integer; %% default
 	[T] -> T
     end.
 
@@ -1770,11 +1822,11 @@ add_var_binds(VEnv, VarBinds) ->
 
 % TODO: improve
 % Is this the right function to use or should I always just return any()?
-glb_types(K, {type, _, N, Args1}, {type, _, N, Args2}) ->
+glb_types(K, ?t(Ty, Args1), ?t(Ty, Args2)) ->
     Args = [ glb_types(K, Arg1, Arg2) || {Arg1, Arg2} <- lists:zip(Args1, Args2) ],
-    {type, 0, N, Args};
+    ?t(Ty, Args);
 glb_types(_, _, _) ->
-    {type, 0, any, []}.
+    ?t_any.
 
 get_rec_field_type(FieldName,
                    [{typed_record_field,
