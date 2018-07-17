@@ -1630,7 +1630,9 @@ add_type_pat(Nil = {nil, P}, Ty, TEnv, VEnv) ->
 	    throw({type_error, pattern, P, Nil, Ty})
     end;
 add_type_pat({cons, _, PH, PT}, ListTy = {type, _, list, [ElemTy]}, TEnv, VEnv) ->
-    VEnv2 = add_type_pat(PH, ElemTy, TEnv, VEnv),
+    NormElemTy = normalize(ElemTy, TEnv),
+    VEnv2 = ?throw_orig_type(add_type_pat(PH, NormElemTy, TEnv, VEnv),
+                             ElemTy, NormElemTy),
     add_type_pat(PT, ListTy, TEnv, VEnv2);
 add_type_pat({cons, _, PH, PT}, ListTy = {type, _, list, []}, TEnv, VEnv) ->
     VEnv2 = add_any_types_pat(PH, VEnv),
