@@ -1244,7 +1244,7 @@ solve_bounds(TEnv, Defs, [{acyclic, X} | SCCs], Acc) ->
 			  end,
 			  {type(term), constraints:empty()}, Tys1);
 	  _NoBoundsForX ->
-	      type(any) %% or should we return term()?
+	      {type(any), constraints:empty()} %% or should we return term()?
       end,
     solve_bounds(TEnv, maps:remove(X, Defs), SCCs, Acc#{ X => Ty1 });
 solve_bounds(_, _, [{cyclic, Xs} | _], _) ->
@@ -2527,7 +2527,8 @@ list_op_arg_types(ListOp, {type, _, union, Tys}) ->
     end;
 list_op_arg_types('++', Ty) ->
     case list_view(Ty) of
-        {empty, _, _}       -> {type(nil), type(nil)};
+        false            -> false;
+        {empty, _, _}    -> {type(nil), type(nil)};
         {Empty, Elem, _} ->
             Arg1 = from_list_view({Empty, Elem, type(nil)}),
             {Arg1, Ty}
@@ -3657,7 +3658,7 @@ union_var_binds_help([VB], _) -> VB.
 
 add_var_binds(VEnv, VarBinds, TEnv) ->
     % TODO: Don't drop the constraints
-    Glb = fun(_K, S, T) -> {T, _C} = glb(S, T, TEnv), T end,
+    Glb = fun(_K, Ty1, Ty2) -> {Ty, _C} = glb(Ty1, Ty2, TEnv), Ty end,
     gradualizer_lib:merge_with(Glb, VEnv, VarBinds).
 
 get_rec_field_type(FieldWithAnno, RecFields) ->
