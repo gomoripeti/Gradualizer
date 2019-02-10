@@ -2,8 +2,8 @@
 
 -export([add_vars/2]).
 
--spec add_vars(1..2, 2..3) -> 2.
+%% is this what we expect to happen?
+-spec add_vars(1..2, 2..3) -> {{1..2, 2..3}, 2}.
 add_vars(A, B) ->
-    V = A,
-    V = B,
-    V.
+    S = {V = A, V = B},
+    {S, V}.
